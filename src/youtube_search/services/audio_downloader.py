@@ -64,12 +64,20 @@ class AudioDownloader:
             }],
         }
         
-        # Cookies (optional)
+        # Cookies — prefer YOUTUBE_COOKIES_FILE path, fall back to YOUTUBE_COOKIES content
         cookies_file = os.getenv('YOUTUBE_COOKIES_FILE')
         if cookies_file and os.path.exists(cookies_file):
             opts['cookiefile'] = cookies_file
-            logger.info(f"Using cookies from: {cookies_file}")
-        
+            logger.info(f"Using cookies from file: {cookies_file}")
+        else:
+            cookies_content = os.getenv('YOUTUBE_COOKIES', '').strip()
+            if cookies_content:
+                cookie_path = '/tmp/youtube_cookies.txt'
+                with open(cookie_path, 'w') as f:
+                    f.write(cookies_content)
+                opts['cookiefile'] = cookie_path
+                logger.info("Using cookies from YOUTUBE_COOKIES env var")
+
         return opts
     
     async def download_and_upload(
