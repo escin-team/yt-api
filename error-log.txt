@@ -1,0 +1,41 @@
+===== Application Startup at 2026-06-20 13:12:14 =====
+
+   Building ytsearch @ file:///app
+      Built ytsearch @ file:///app
+Uninstalled 1 package in 0.58ms
+Installed 6 packages in 114ms
+INFO:     Started server process [55]
+INFO:     Waiting for application startup.
+2026-06-20 13:12:39 INFO main                           Starting YouTube Music API on port 7860 [main.py:61 startup_event]
+2026-06-20 13:12:39 INFO main                           Redis enabled: False [main.py:62 startup_event]
+2026-06-20 13:12:39 INFO youtube_search.config          Loaded 3 Cloudinary account(s) for failover. [config.py:72 cloudinary_accounts]
+2026-06-20 13:12:39 INFO main                           Cloudinary accounts: 3 [main.py:63 startup_event]
+2026-06-20 13:12:39 INFO main                           Download timeout: 300 seconds [main.py:64 startup_event]
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:7860 (Press CTRL+C to quit)
+2026-06-20 13:12:57 INFO youtube_search.services.search Searching YouTube: keyword='Hindia', limit=2, sort_by=relevance [search.py:28 search]
+2026-06-20 13:12:58 INFO httpx                          HTTP Request: GET https://vid.puffyan.us/api/v1/search?q=Hindia&sort_by=relevance&type=video&page=1 "HTTP/2 502 Bad Gateway" [_client.py:1740 _send_single_request]
+2026-06-20 13:12:58 WARNING youtube_search.services.scraper Invidious instance https://vid.puffyan.us failed: Server error '502 Bad Gateway' for url 'https://vid.puffyan.us/api/v1/search?q=Hindia&sort_by=relevance&type=video&page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502 [scraper.py:219 _search_invidious]
+2026-06-20 13:12:58 WARNING youtube_search.services.scraper Invidious instance https://invidious.fdn.fr failed: [Errno -2] Name or service not known [scraper.py:219 _search_invidious]
+2026-06-20 13:13:13 WARNING youtube_search.services.scraper Invidious instance https://inv.tux.pizza failed:  [scraper.py:219 _search_invidious]
+2026-06-20 13:13:13 INFO httpx                          HTTP Request: GET https://invidious.perennialte.ch/api/v1/search?q=Hindia&sort_by=relevance&type=video&page=1 "HTTP/2 403 Forbidden" [_client.py:1740 _send_single_request]
+2026-06-20 13:13:13 WARNING youtube_search.services.scraper Invidious instance https://invidious.perennialte.ch failed: Client error '403 Forbidden' for url 'https://invidious.perennialte.ch/api/v1/search?q=Hindia&sort_by=relevance&type=video&page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/403 [scraper.py:219 _search_invidious]
+2026-06-20 13:13:13 INFO httpx                          HTTP Request: GET https://iv.ggtyler.dev/api/v1/search?q=Hindia&sort_by=relevance&type=video&page=1 "HTTP/2 301 Moved Permanently" [_client.py:1740 _send_single_request]
+2026-06-20 13:13:13 INFO httpx                          HTTP Request: GET https://www.ggtyler.dev/other/frontends "HTTP/2 200 OK" [_client.py:1740 _send_single_request]
+2026-06-20 13:13:13 WARNING youtube_search.services.scraper Invidious instance https://iv.ggtyler.dev failed: Expecting value: line 1 column 1 (char 0) [scraper.py:219 _search_invidious]
+2026-06-20 13:13:13 INFO httpx                          HTTP Request: GET https://invidious.privacyredirect.com/api/v1/search?q=Hindia&sort_by=relevance&type=video&page=1 "HTTP/1.1 301 Moved Permanently" [_client.py:1740 _send_single_request]
+2026-06-20 13:13:14 INFO httpx                          HTTP Request: GET https://privacyredirect.com/api/v1/search?q=Hindia&sort_by=relevance&type=video&page=1 "HTTP/2 404 Not Found" [_client.py:1740 _send_single_request]
+2026-06-20 13:13:14 WARNING youtube_search.services.scraper Invidious instance https://invidious.privacyredirect.com failed: Client error '404 Not Found' for url 'https://privacyredirect.com/api/v1/search?q=Hindia&sort_by=relevance&type=video&page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404 [scraper.py:219 _search_invidious]
+2026-06-20 13:13:14 INFO httpx                          HTTP Request: GET https://invidious.lunar.icu/api/v1/search?q=Hindia&sort_by=relevance&type=video&page=1 "HTTP/1.1 502 Bad Gateway" [_client.py:1740 _send_single_request]
+2026-06-20 13:13:14 WARNING youtube_search.services.scraper Invidious instance https://invidious.lunar.icu failed: Server error '502 Bad Gateway' for url 'https://invidious.lunar.icu/api/v1/search?q=Hindia&sort_by=relevance&type=video&page=1'
+For more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/502 [scraper.py:219 _search_invidious]
+2026-06-20 13:13:14 WARNING youtube_search.services.scraper Invidious instance https://yt.drgnz.club failed: [Errno -2] Name or service not known [scraper.py:219 _search_invidious]
+2026-06-20 13:13:24 ERROR youtube_search.services.scraper Fallback package failed: HTTPSConnectionPool(host='youtube.com', port=443): Max retries exceeded with url: /results?search_query=Hindia (Caused by SSLError(SSLEOFError(8, '[SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1010)'))) [scraper.py:271 _search_fallback_package]
+2026-06-20 13:13:34 ERROR youtube_search.services.scraper YouTube direct search error:  [scraper.py:161 _search_youtube_direct]
+2026-06-20 13:13:34 ERROR youtube_search.services.scraper YouTube direct search also failed:  [scraper.py:116 search]
+INFO:     10.16.3.80:9030 - "GET /api/v1/search?keyword=Hindia&limit=2 HTTP/1.1" 200 OK
+2026-06-20 13:13:34 ERROR youtube_search.services.scraper ❌ All search methods failed for keyword: Hindia [scraper.py:118 search]
+2026-06-20 13:13:34 INFO youtube_search.services.search Search completed: 0 results [search.py:34 search]
