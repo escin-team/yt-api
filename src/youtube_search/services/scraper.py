@@ -132,9 +132,14 @@ class YouTubeScraper:
             matches = re.findall(pattern, html)
             
             for video_id, title in matches[:limit]:
+                try:
+                    import json as _json
+                    decoded_title = _json.loads(f'"{title}"')
+                except Exception:
+                    decoded_title = title
                 videos.append({
                     "video_id": video_id,
-                    "title": title.encode().decode('unicode_escape'),
+                    "title": decoded_title,
                     "url": f"https://www.youtube.com/watch?v={video_id}",
                     "channel": None,
                     "channel_url": None,
@@ -213,11 +218,26 @@ class YouTubeScraper:
     async def _search_fallback_package(self, keyword: str, limit: int) -> List[Dict[str, Any]]:
         """Search pakai youtube-search package (ultimate fallback)."""
         try:
-            from youtube_search import YoutubeSearch
-            
+            # Import directly from site-packages to avoid collision with our own package name
+            import importlib.util, sys
+            _pkg_path = None
+            for p in sys.path:
+                if "site-packages" in p:
+                    candidate = f"{p}/youtube_search/__init__.py"
+                    import os
+                    if os.path.exists(candidate):
+                        _pkg_path = candidate
+                        break
+            if _pkg_path is None:
+                raise ImportError("youtube-search package not found in site-packages")
+            spec = importlib.util.spec_from_file_location("_yt_search_pkg", _pkg_path)
+            _mod = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(_mod)
+            YoutubeSearch = _mod.YoutubeSearch
+
             def sync_search():
                 searcher = YoutubeSearch(keyword, max_results=limit)
-                return searcher.results()
+                return searcher.to_dict()
             
             # Run in thread pool untuk blocking call
             results = await asyncio.to_thread(sync_search)
