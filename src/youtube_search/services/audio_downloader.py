@@ -19,8 +19,19 @@ class AudioDownloader:
     def __init__(self):
         self.cloudinary = CloudinaryService()
     
-    def _get_ydl_opts(self, output_file: str, timeout: int, bitrate: int, client: str = "tv") -> dict:
-        """Get yt-dlp options with Bun JS runtime for EJS challenge solving."""
+    def _get_ydl_opts(self, output_file: str, timeout: int, bitrate: int, client: str = None) -> dict:
+        """Get yt-dlp options optimized for free hosting (no SSL bypass, no cookies)."""
+        
+        # Get client from env or use default fallback chain for free hosting
+        if client is None:
+            client = os.getenv('YTDL_CLIENT', 'tv_embedded')
+        
+        # Check if we should skip cookies (for free hosting compatibility)
+        no_cookies = os.getenv('YTDL_NO_COOKIES', 'true').lower() == 'true'
+        
+        # Check if we should verify SSL (for free hosting compatibility)
+        verify_ssl = os.getenv('YTDL_VERIFY_SSL', 'true').lower() == 'true'
+        
         opts = {
             'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
             'outtmpl': output_file,
@@ -37,17 +48,20 @@ class AudioDownloader:
             },
             'skip_unavailable_fragments': True,
             'keepvideo': False,
-            'nocheckcertificate': True,
+            'nocheckcertificate': not verify_ssl,  # Respect SSL verification setting
             'geo_bypass': True,
             'geo_bypass_country': 'US',
             'no_color': True,
-
-            # Use bun as the JS runtime for EJS challenge solving (yt-dlp requires Node ≥22 but bun ≥1.2.11)
-            'js_runtimes': {'bun': {}},
+            
+            # For free hosting: use simpler JS runtime or none
+            # tv_embedded client doesn't need EJS challenge solving
+            'js_runtimes': {'bun': {}} if client in ['tv', 'web_creator'] else {},
 
             'extractor_args': {
                 'youtube': {
                     'player_client': [client],
+                    # Skip login for free hosting
+                    'skip': ['login'],
                 }
             },
             'http_headers': {
@@ -55,8 +69,6 @@ class AudioDownloader:
                 'Accept-Language': 'en-US,en;q=0.9',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                 'Sec-Fetch-Mode': 'navigate',
-                'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-                'Sec-Ch-Ua-Platform': '"Windows"',
             },
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
@@ -65,18 +77,17 @@ class AudioDownloader:
             }],
         }
         
-        # Cookies — check multiple sources in priority order
-        _WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
-        _BUNDLED_COOKIE_FILE = os.path.join(_WORKSPACE_ROOT, 'attached_assets', 'cookies_1781947987715.txt')
-        cookies_file = (
-            os.getenv('YOUTUBE_COOKIES_FILE')
-            or (_BUNDLED_COOKIE_FILE if os.path.exists(_BUNDLED_COOKIE_FILE) else None)
-        )
-        if cookies_file and os.path.exists(cookies_file):
-            opts['cookiefile'] = cookies_file
-            logger.info(f"Using cookies from file: {cookies_file}")
-        else:
-            logger.warning("No valid cookie file found — downloads may hit bot detection")
+        # NO COOKIES for free hosting - avoids detection issues
+        if not no_cookies:
+            _WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
+            _BUNDLED_COOKIE_FILE = os.path.join(_WORKSPACE_ROOT, 'attached_assets', 'cookies_1781947987715.txt')
+            cookies_file = (
+                os.getenv('YOUTUBE_COOKIES_FILE')
+                or (_BUNDLED_COOKIE_FILE if os.path.exists(_BUNDLED_COOKIE_FILE) else None)
+            )
+            if cookies_file and os.path.exists(cookies_file):
+                opts['cookiefile'] = cookies_file
+                logger.info(f"Using cookies from file: {cookies_file}")
 
         return opts
     
@@ -87,7 +98,13 @@ class AudioDownloader:
         max_duration: int = 600,
         bitrate: int = 128
     ) -> AudioFile:
-        """Download YouTube video sebagai MP3 dan upload ke Cloudinary."""
+        """Download YouTube video sebagai MP3 dan upload ke Cloudinary.
+        
+        Untuk FREE HOSTING:
+        - Gunakan tv_embedded client (tidak butuh EJS challenge solving)
+        - Tanpa cookies file
+        - SSL verification normal
+        """
         try:
             with tempfile.TemporaryDirectory() as temp_dir:
                 output_file = os.path.join(temp_dir, f"{video_id}.%(ext)s")
@@ -97,8 +114,9 @@ class AudioDownloader:
                 
                 import yt_dlp
                 
-                # tv client works with Bun EJS challenge solver; fallback to web variants
-                clients = ['tv', 'tv_embedded', 'web_creator', 'web']
+                # Fallback chain untuk free hosting: tv_embedded > web > android
+                # tv_embedded adalah yang paling reliable tanpa cookies
+                clients = ['tv_embedded', 'web', 'android']
                 max_attempts = len(clients)
                 last_error = None
                 info = None
