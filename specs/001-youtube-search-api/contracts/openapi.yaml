@@ -1,0 +1,246 @@
+openapi: 3.1.0
+info:
+  title: YouTube 搜尋 API
+  description: 透過爬蟲 YouTube 搜尋結果頁面，提取影片元數據的 REST API
+  version: 1.0.0
+  contact:
+    name: YTSearch 專案
+    url: https://github.com/sacahan/YTSearch
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8000
+    description: 本地開發環境
+  - url: https://api.ytsearch.example.com
+    description: 生產環境（示例）
+
+paths:
+  /api/v1/search:
+    get:
+      summary: 搜尋 YouTube 影片
+      description: |
+        根據提供的關鍵字搜尋 YouTube，返回符合的影片元數據清單。
+
+        ### 功能特性
+        - 無需官方 API 金鑰
+        - 1 小時 Redis 快取自動加速
+        - 預設返回 1 筆最相關結果，支援自訂 1-100 筆
+        - 支援按相關性或發佈日期排序
+
+        ### 錯誤處理
+        - 無效參數返回 HTTP 400
+        - YouTube 連線故障返回 HTTP 503（不自動重試）
+      operationId: searchVideos
+      tags:
+        - 搜尋
+      parameters:
+        - name: keyword
+          in: query
+          required: true
+          description: 搜尋關鍵字（1-200 字元）
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+          example: Python 教學
+        - name: limit
+          in: query
+          required: false
+          description: 返回結果數量（預設 1，最大 100）
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 1
+          example: 5
+        - name: sort_by
+          in: query
+          required: false
+          description: 排序方式
+          schema:
+            type: string
+            enum:
+              - relevance
+              - date
+            default: relevance
+          example: date
+      responses:
+        '200':
+          description: 搜尋成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+              example:
+                search_keyword: "Python 教學"
+                result_count: 1
+                videos:
+                  - video_id: "abc123def456"
+                    title: "Python 基礎教學"
+                    url: "https://www.youtube.com/watch?v=abc123def456"
+                    channel: "教學頻道"
+                    channel_url: "https://www.youtube.com/c/example"
+                    publish_date: "2024-01-15T10:30:00Z"
+                    view_count: 50000
+                    description: "從入門到精通..."
+                timestamp: "2025-12-07T12:00:00Z"
+        '400':
+          description: 無效參數
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                missing_keyword:
+                  value:
+                    error: "keyword 為必須參數"
+                    error_code: "MISSING_PARAMETER"
+                invalid_limit:
+                  value:
+                    error: "limit 必須在 1-100 之間"
+                    error_code: "INVALID_LIMIT"
+                keyword_too_long:
+                  value:
+                    error: "keyword 長度超過 200 字元"
+                    error_code: "INVALID_KEYWORD_LENGTH"
+        '503':
+          description: YouTube 服務暫時不可用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "YouTube 搜尋服務暫時無法連接"
+                error_code: "YOUTUBE_UNAVAILABLE"
+
+components:
+  schemas:
+    Video:
+      type: object
+      description: YouTube 影片元數據
+      required:
+        - video_id
+      properties:
+        video_id:
+          type: string
+          pattern: '^[a-zA-Z0-9_-]{11}$'
+          description: YouTube 影片 ID（11 字元）
+          example: "mIF-nn_y2_8"
+        title:
+          type: string
+          nullable: true
+          maxLength: 500
+          description: 影片標題（若無法提取則為 null）
+          example: "張學友 Jacky Cheung - 吻別"
+        url:
+          type: string
+          nullable: true
+          format: uri
+          description: 影片完整 URL
+          example: "https://www.youtube.com/watch?v=mIF-nn_y2_8"
+        channel:
+          type: string
+          nullable: true
+          maxLength: 200
+          description: 頻道名稱
+          example: "音樂無疆界 Music Without Boundaries"
+        channel_url:
+          type: string
+          nullable: true
+          format: uri
+          description: 頻道 URL
+          example: "https://www.youtube.com/c/example"
+        publish_date:
+          type: string
+          nullable: true
+          format: date-time
+          description: 發佈日期（ISO 8601 格式，UTC）
+          example: "2023-11-20T14:30:00Z"
+        view_count:
+          type: integer
+          nullable: true
+          minimum: 0
+          description: 觀看次數
+          example: 5000000
+        description:
+          type: string
+          nullable: true
+          maxLength: 5000
+          description: 影片描述摘要
+          example: "經典粵語歌曲..."
+
+    SearchResult:
+      type: object
+      description: 搜尋結果集合
+      required:
+        - search_keyword
+        - result_count
+        - videos
+        - timestamp
+      properties:
+        search_keyword:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: 搜尋關鍵字
+          example: "張學友 吻別"
+        result_count:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: 返回影片數量
+          example: 3
+        videos:
+          type: array
+          items:
+            $ref: '#/components/schemas/Video'
+          description: 影片清單（依相關性或發佈日期排序）
+          minItems: 0
+          maxItems: 100
+        timestamp:
+          type: string
+          format: date-time
+          description: 搜尋時間戳記（ISO 8601 格式，UTC，秒級精度）
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$'
+          example: "2025-12-07T12:00:00Z"
+
+    ErrorResponse:
+      type: object
+      description: 錯誤回應
+      required:
+        - error
+        - error_code
+      properties:
+        error:
+          type: string
+          description: 人類可讀的錯誤訊息
+          example: "YouTube 搜尋服務暫時無法連接"
+        error_code:
+          type: string
+          description: 機器可讀的錯誤碼
+          enum:
+            - MISSING_PARAMETER
+            - INVALID_KEYWORD_LENGTH
+            - INVALID_LIMIT
+            - YOUTUBE_UNAVAILABLE
+            - CACHE_UNAVAILABLE
+            - INTERNAL_ERROR
+          example: "YOUTUBE_UNAVAILABLE"
+
+tags:
+  - name: 搜尋
+    description: YouTube 影片搜尋操作
+
+x-api-lifecycle:
+  maturity: beta
+  support-level: community
+  deprecation-date: null
+  sunset-date: null
+
+x-constraints:
+  rate-limiting: "無（POC 階段）"
+  caching: "Redis TTL 3600 秒（1 小時）"
+  authentication: "無需認證"
+  https-only: false
+  youtube-dependency: "必須能存取 YouTube 搜尋頁面"

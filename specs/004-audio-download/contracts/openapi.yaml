@@ -1,0 +1,524 @@
+openapi: 3.1.0
+info:
+    title: YouTube Audio Download API
+    description: |
+        YouTube 音檔下載 API，提供單一和批次下載功能。
+
+        **功能特性**：
+        - 單一影片音檔下載（MP3 格式，128kbps）
+        - 批次下載（最多 20 個影片）
+        - 自動快取（24 小時）
+        - 影片長度限制（最多 10 分鐘）
+        - 公開下載連結或串流模式
+
+        **限制**：
+        - 不支援串流/直播影片
+        - 影片長度上限 600 秒
+        - 批次下載最多 20 個影片
+    version: 1.0.0
+    contact:
+        name: API Support
+        email: support@example.com
+
+servers:
+    - url: http://localhost:8000/api/v1
+      description: 本地開發環境
+    - url: https://api.example.com/api/v1
+      description: 生產環境
+
+tags:
+    - name: download
+      description: 音檔下載相關端點
+
+paths:
+    /download/audio:
+        post:
+            tags:
+                - download
+            summary: 下載單一影片音檔
+            description: |
+                下載並轉換指定 YouTube 影片為 MP3 音檔。
+
+                **處理流程**：
+                1. 驗證影片 ID 格式
+                2. 檢查快取（若存在直接返回）
+                3. 驗證影片元數據（長度、類型）
+                4. 使用 yt-dlp 下載並轉換為 MP3
+                5. 儲存檔案並建立快取索引
+                6. 返回下載連結或串流內容
+
+                **快取行為**：
+                - 快取有效期：24 小時
+                - 快取命中時處理時間 < 100ms
+                - 快取未命中時處理時間 5-30 秒（視影片大小）
+            operationId: downloadAudio
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/DownloadAudioRequest"
+                        examples:
+                            link_format:
+                                summary: 返回下載連結
+                                value:
+                                    video_id: dQw4w9WgXcQ
+                                    format: link
+                            stream_format:
+                                summary: 直接串流
+                                value:
+                                    video_id: dQw4w9WgXcQ
+                                    format: stream
+            responses:
+                "200":
+                    description: 下載成功
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/DownloadAudioResponse"
+                            examples:
+                                cached_response:
+                                    summary: 快取命中回應
+                                    value:
+                                        video_id: dQw4w9WgXcQ
+                                        download_url: https://api.example.com/downloads/dQw4w9WgXcQ.mp3
+                                        file_size: 3145728
+                                        video_title: Never Gonna Give You Up
+                                        video_duration: 213
+                                        format: mp3
+                                        bitrate: 128
+                                        expires_at: "2025-12-10T10:00:00Z"
+                                        cached: true
+                                new_download:
+                                    summary: 新下載回應
+                                    value:
+                                        video_id: jNQXAC9IVRw
+                                        download_url: https://api.example.com/downloads/jNQXAC9IVRw.mp3
+                                        file_size: 4567890
+                                        video_title: Me at the zoo
+                                        video_duration: 19
+                                        format: mp3
+                                        bitrate: 128
+                                        expires_at: "2025-12-10T11:30:00Z"
+                                        cached: false
+                        audio/mpeg:
+                            schema:
+                                type: string
+                                format: binary
+                            description: 音檔串流（當 format=stream 時）
+                "400":
+                    description: 請求參數錯誤
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                            examples:
+                                invalid_video_id:
+                                    summary: 無效的影片 ID
+                                    value:
+                                        error: invalid_video_id
+                                        message: 影片 ID 必須為 11 個字元
+                                        video_id: invalid123
+                                duration_exceeded:
+                                    summary: 影片長度超過限制
+                                    value:
+                                        error: duration_exceeded
+                                        message: 影片長度超過 600 秒限制
+                                        video_id: dQw4w9WgXcQ
+                                        duration: 720
+                                        max_duration: 600
+                "403":
+                    description: 影片受限
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                            examples:
+                                live_stream:
+                                    summary: 串流/直播影片
+                                    value:
+                                        error: live_stream_not_supported
+                                        message: 不支援串流或直播影片
+                                        video_id: abc12345678
+                "404":
+                    description: 影片不存在
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                            example:
+                                error: video_not_found
+                                message: 找不到指定的影片
+                                video_id: notfound123
+                "503":
+                    description: 下載服務暫時不可用
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                            example:
+                                error: download_failed
+                                message: yt-dlp 下載失敗，請稍後重試
+                                video_id: dQw4w9WgXcQ
+                                retry_after: 60
+                "507":
+                    description: 儲存空間不足
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                            example:
+                                error: storage_full
+                                message: 伺服器儲存空間不足
+                                available_space_mb: 50
+
+    /download/batch:
+        post:
+            tags:
+                - download
+            summary: 批次下載多個影片音檔
+            description: |
+                批次下載最多 20 個影片的音檔。
+
+                **處理特性**：
+                - 並行處理所有請求
+                - 部分失敗不影響其他影片
+                - 返回每個影片的狀態
+                - 自動跳過快取命中的影片
+
+                **回應結構**：
+                - `total`: 總請求數
+                - `successful`: 成功數
+                - `failed`: 失敗數
+                - `results`: 每個影片的詳細結果
+            operationId: batchDownloadAudio
+            requestBody:
+                required: true
+                content:
+                    application/json:
+                        schema:
+                            $ref: "#/components/schemas/BatchDownloadRequest"
+                        example:
+                            video_ids:
+                                - dQw4w9WgXcQ
+                                - jNQXAC9IVRw
+                                - 9bZkp7q19f0
+            responses:
+                "200":
+                    description: 批次下載完成（可能包含部分失敗）
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/BatchDownloadResponse"
+                            examples:
+                                all_success:
+                                    summary: 全部成功
+                                    value:
+                                        total: 3
+                                        successful: 3
+                                        failed: 0
+                                        results:
+                                            - video_id: dQw4w9WgXcQ
+                                              status: success
+                                              download_url: https://api.example.com/downloads/dQw4w9WgXcQ.mp3
+                                              file_size: 3145728
+                                              video_title: Never Gonna Give You Up
+                                              error_message: null
+                                              error_type: null
+                                            - video_id: jNQXAC9IVRw
+                                              status: success
+                                              download_url: https://api.example.com/downloads/jNQXAC9IVRw.mp3
+                                              file_size: 456789
+                                              video_title: Me at the zoo
+                                              error_message: null
+                                              error_type: null
+                                            - video_id: 9bZkp7q19f0
+                                              status: success
+                                              download_url: https://api.example.com/downloads/9bZkp7q19f0.mp3
+                                              file_size: 2345678
+                                              video_title: PSY - GANGNAM STYLE
+                                              error_message: null
+                                              error_type: null
+                                partial_failure:
+                                    summary: 部分失敗
+                                    value:
+                                        total: 3
+                                        successful: 2
+                                        failed: 1
+                                        results:
+                                            - video_id: dQw4w9WgXcQ
+                                              status: success
+                                              download_url: https://api.example.com/downloads/dQw4w9WgXcQ.mp3
+                                              file_size: 3145728
+                                              video_title: Never Gonna Give You Up
+                                              error_message: null
+                                              error_type: null
+                                            - video_id: invalid1234
+                                              status: failed
+                                              download_url: null
+                                              file_size: null
+                                              video_title: null
+                                              error_message: 找不到指定的影片
+                                              error_type: video_not_found
+                                            - video_id: jNQXAC9IVRw
+                                              status: success
+                                              download_url: https://api.example.com/downloads/jNQXAC9IVRw.mp3
+                                              file_size: 456789
+                                              video_title: Me at the zoo
+                                              error_message: null
+                                              error_type: null
+                "400":
+                    description: 請求參數錯誤
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                            examples:
+                                empty_list:
+                                    summary: 空的影片列表
+                                    value:
+                                        error: invalid_request
+                                        message: video_ids 不能為空
+                                too_many_videos:
+                                    summary: 超過數量限制
+                                    value:
+                                        error: invalid_request
+                                        message: video_ids 最多 20 個
+                                        count: 25
+                                        max_count: 20
+
+components:
+    schemas:
+        DownloadAudioRequest:
+            type: object
+            required:
+                - video_id
+            properties:
+                video_id:
+                    type: string
+                    minLength: 11
+                    maxLength: 11
+                    pattern: "^[a-zA-Z0-9_-]{11}$"
+                    description: YouTube 影片 ID（11 個字元）
+                    example: dQw4w9WgXcQ
+                format:
+                    type: string
+                    enum:
+                        - link
+                        - stream
+                    default: link
+                    description: |
+                        返回格式：
+                        - `link`: 返回公開下載連結（預設）
+                        - `stream`: 直接串流音檔內容
+                    example: link
+
+        BatchDownloadRequest:
+            type: object
+            required:
+                - video_ids
+            properties:
+                video_ids:
+                    type: array
+                    minItems: 1
+                    maxItems: 20
+                    items:
+                        type: string
+                        minLength: 11
+                        maxLength: 11
+                        pattern: "^[a-zA-Z0-9_-]{11}$"
+                    description: 影片 ID 列表（1-20 個）
+                    example:
+                        - dQw4w9WgXcQ
+                        - jNQXAC9IVRw
+                        - 9bZkp7q19f0
+
+        DownloadAudioResponse:
+            type: object
+            required:
+                - video_id
+                - file_size
+                - video_title
+                - video_duration
+                - format
+                - bitrate
+                - expires_at
+                - cached
+            properties:
+                video_id:
+                    type: string
+                    minLength: 11
+                    maxLength: 11
+                    description: 影片 ID
+                    example: dQw4w9WgXcQ
+                download_url:
+                    type: string
+                    format: uri
+                    nullable: true
+                    description: 公開下載連結（format=link 時提供）
+                    example: https://api.example.com/downloads/dQw4w9WgXcQ.mp3
+                file_size:
+                    type: integer
+                    minimum: 1
+                    description: 檔案大小（位元組）
+                    example: 3145728
+                video_title:
+                    type: string
+                    description: 影片標題
+                    example: Never Gonna Give You Up
+                video_duration:
+                    type: integer
+                    minimum: 1
+                    maximum: 600
+                    description: 影片長度（秒）
+                    example: 213
+                format:
+                    type: string
+                    enum:
+                        - mp3
+                    description: 音檔格式
+                    example: mp3
+                bitrate:
+                    type: integer
+                    description: 音質位元率（kbps）
+                    example: 128
+                expires_at:
+                    type: string
+                    format: date-time
+                    description: 快取過期時間（ISO 8601 格式）
+                    example: "2025-12-10T10:00:00Z"
+                cached:
+                    type: boolean
+                    description: 是否來自快取
+                    example: true
+
+        BatchDownloadItem:
+            type: object
+            required:
+                - video_id
+                - status
+            properties:
+                video_id:
+                    type: string
+                    minLength: 11
+                    maxLength: 11
+                    description: 影片 ID
+                    example: dQw4w9WgXcQ
+                status:
+                    type: string
+                    enum:
+                        - success
+                        - failed
+                    description: 下載狀態
+                    example: success
+                download_url:
+                    type: string
+                    format: uri
+                    nullable: true
+                    description: 下載連結（成功時提供）
+                    example: https://api.example.com/downloads/dQw4w9WgXcQ.mp3
+                file_size:
+                    type: integer
+                    nullable: true
+                    description: 檔案大小（位元組，成功時提供）
+                    example: 3145728
+                video_title:
+                    type: string
+                    nullable: true
+                    description: 影片標題（成功時提供）
+                    example: Never Gonna Give You Up
+                error_message:
+                    type: string
+                    nullable: true
+                    description: 錯誤訊息（失敗時提供）
+                    example: 找不到指定的影片
+                error_type:
+                    type: string
+                    nullable: true
+                    enum:
+                        - video_not_found
+                        - duration_exceeded
+                        - live_stream
+                        - download_failed
+                        - storage_full
+                        - restricted
+                        - timeout
+                    description: 錯誤類型（失敗時提供）
+                    example: video_not_found
+
+        BatchDownloadResponse:
+            type: object
+            required:
+                - total
+                - successful
+                - failed
+                - results
+            properties:
+                total:
+                    type: integer
+                    minimum: 1
+                    description: 總請求數
+                    example: 3
+                successful:
+                    type: integer
+                    minimum: 0
+                    description: 成功數
+                    example: 2
+                failed:
+                    type: integer
+                    minimum: 0
+                    description: 失敗數
+                    example: 1
+                results:
+                    type: array
+                    items:
+                        $ref: "#/components/schemas/BatchDownloadItem"
+                    description: 每個影片的下載結果
+
+        ErrorResponse:
+            type: object
+            required:
+                - error
+                - message
+            properties:
+                error:
+                    type: string
+                    description: 錯誤代碼
+                    enum:
+                        - invalid_video_id
+                        - video_not_found
+                        - duration_exceeded
+                        - live_stream_not_supported
+                        - download_failed
+                        - storage_full
+                        - invalid_request
+                    example: video_not_found
+                message:
+                    type: string
+                    description: 錯誤訊息
+                    example: 找不到指定的影片
+                video_id:
+                    type: string
+                    nullable: true
+                    description: 相關影片 ID（若適用）
+                    example: dQw4w9WgXcQ
+                duration:
+                    type: integer
+                    nullable: true
+                    description: 影片實際長度（duration_exceeded 時提供）
+                    example: 720
+                max_duration:
+                    type: integer
+                    nullable: true
+                    description: 最大允許長度（duration_exceeded 時提供）
+                    example: 600
+                retry_after:
+                    type: integer
+                    nullable: true
+                    description: 建議重試等待時間（秒，503 錯誤時提供）
+                    example: 60
+                available_space_mb:
+                    type: integer
+                    nullable: true
+                    description: 剩餘儲存空間（MB，507 錯誤時提供）
+                    example: 50

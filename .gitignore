@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Output files
+output/
+downloads/
+*.mp3
+*.mp4
+*.webm
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Build
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Docker
+.docker/
+
+# Hugging Face
+.huggingface/
+
+# Temporary
+*.tmp
+*.temp
+*.bak
+*.backup

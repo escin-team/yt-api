@@ -1,0 +1,163 @@
+openapi: 3.1.0
+info:
+    title: YouTube 播放列表元數據 API
+    version: 0.1.0
+    description: 使用網頁爬取取得播放列表曲目 metadata 的 FastAPI 端點。
+servers:
+    - url: http://localhost:8000
+      description: 本機開發環境
+paths:
+    /api/v1/playlist/metadata:
+        get:
+            summary: 取得播放列表所有曲目元數據
+            description: 解析 playlist URL 取得 playlist_id，透過 HTML/ytInitialData 爬取所有曲目並一次性回傳。
+            parameters:
+                - name: playlist_url
+                  in: query
+                  required: true
+                  description: 含有 `list=` 參數的 YouTube 播放列表 URL。
+                  schema:
+                      type: string
+                      format: uri
+                - name: force_refresh
+                  in: query
+                  required: false
+                  description: 略過快取強制重新爬取，預設 false。
+                  schema:
+                      type: boolean
+            responses:
+                "200":
+                    description: 成功回傳播放列表元數據。
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/PlaylistResponse"
+                "400":
+                    description: URL 格式錯誤或缺少 `list` 參數。
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                "403":
+                    description: 播放列表私密或地區/帳號受限。
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                "404":
+                    description: 播放列表不存在或已刪除。
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                "410":
+                    description: 播放列表曾存在但已刪除。
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+                "502":
+                    description: YouTube 回應異常或頁面結構變更導致解析失敗。
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/ErrorResponse"
+            tags:
+                - playlist
+components:
+    schemas:
+        PlaylistResponse:
+            type: object
+            required: [playlist_id, tracks, partial]
+            properties:
+                playlist_id:
+                    type: string
+                    description: 由 playlist URL 解析出的 ID。
+                title:
+                    type: string
+                    nullable: true
+                    description: 播放列表標題。
+                url:
+                    type: string
+                    format: uri
+                    description: 原始 playlist URL。
+                video_count:
+                    type: integer
+                    minimum: 0
+                    nullable: true
+                    description: 預估曲目數；若缺失則以 tracks 長度為準。
+                partial:
+                    type: boolean
+                    description: 若為 true，表示因超時/continuation 缺失僅回傳部分曲目。
+                fetched_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: 爬取完成時間。
+                tracks:
+                    type: array
+                    items:
+                        $ref: "#/components/schemas/Track"
+        Track:
+            type: object
+            required: [video_id, title, url]
+            properties:
+                video_id:
+                    type: string
+                    description: YouTube 影片 ID。
+                title:
+                    type: string
+                    description: 歌曲/影片標題。
+                channel:
+                    type: string
+                    nullable: true
+                    description: 頻道或藝人名稱。
+                channel_url:
+                    type: string
+                    format: uri
+                    nullable: true
+                    description: 頻道連結。
+                url:
+                    type: string
+                    format: uri
+                    description: 影片 URL。
+                publish_date:
+                    type: string
+                    nullable: true
+                    description: 發布時間（相對時間字串）。
+                duration:
+                    type: string
+                    nullable: true
+                    description: 影片長度（如 3:45）。
+                view_count:
+                    type: integer
+                    nullable: true
+                    description: 觀看次數。
+                position:
+                    type: integer
+                    nullable: true
+                    description: 在播放列表中的排序序號。
+        ErrorResponse:
+            type: object
+            required: [code, message, status]
+            properties:
+                code:
+                    type: string
+                    description: 機器可讀的錯誤碼（如 PLAYLIST_NOT_FOUND、INVALID_PARAMETER）。
+                message:
+                    type: string
+                    description: 用戶友善的錯誤訊息。
+                reason:
+                    type: string
+                    nullable: true
+                    description: 進一步說明或除錯資訊。
+                trace_id:
+                    type: string
+                    description: 追蹤 ID，便於日誌查詢。
+                playlist_id:
+                    type: string
+                    nullable: true
+                    description: 相關播放列表 ID（如適用）。
+                status:
+                    type: integer
+                    description: HTTP 狀態碼。
