@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import random
 import re
 from typing import List, Dict, Any, Optional
@@ -229,7 +230,6 @@ class YouTubeScraper:
             for p in sys.path:
                 if "site-packages" in p:
                     candidate = f"{p}/youtube_search/__init__.py"
-                    import os
                     if os.path.exists(candidate):
                         _pkg_path = candidate
                         break
