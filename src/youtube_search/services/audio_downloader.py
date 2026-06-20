@@ -44,14 +44,9 @@ class AudioDownloader:
             'force-ipv4': True,
             'no_color': True,
             
-            # ⭐⭐⭐ IMPERSONATE - Ini kunci bypass SSL ⭐⭐⭐
-            # Menggunakan curl_cffi untuk meniru TLS fingerprint browser
-            'impersonate': 'chrome',  # ⭐ PENTING: impersonate Chrome browser
-            
             'extractor_args': {
                 'youtube': {
-                    'player_client': [client, 'android', 'ios'],
-                    'player_skip': ['webpage', 'configs'],
+                    'player_client': [client],
                 }
             },
             'http_headers': {
@@ -94,8 +89,8 @@ class AudioDownloader:
                 
                 import yt_dlp
                 
-                # Daftar client untuk fallback
-                clients = ['web_creator', 'web', 'android', 'ios', 'mweb']
+                # Daftar client untuk fallback (tv_embedded & android bypass bot detection best)
+                clients = ['tv_embedded', 'android', 'ios', 'web_creator', 'web']
                 max_attempts = len(clients)
                 last_error = None
                 info = None

@@ -41,7 +41,7 @@ class PrefetchRequest(BaseModel):
     video_ids: list
 
 
-@router.post("/download/audio", response_model=DownloadResponse)
+@router.api_route("/download/audio", methods=["GET", "POST"], response_model=DownloadResponse)
 async def download_audio(
     video_id: str = Query(..., description="YouTube video ID (11 characters)"),
     format: str = Query("link", description="link or stream")
