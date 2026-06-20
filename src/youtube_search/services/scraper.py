@@ -8,6 +8,7 @@ import re
 from typing import List, Dict, Any, Optional
 from functools import lru_cache
 import httpx
+from curl_cffi import requests as curl_requests
 from youtube_search.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -22,15 +23,26 @@ USER_AGENTS = [
 ]
 
 # Invidious instances sebagai fallback (cek status di https://api.invidious.io/)
+# Updated dengan instances yang lebih reliable - sorted by stability
 INVIDIOUS_INSTANCES = [
-    "https://vid.puffyan.us",
-    "https://invidious.fdn.fr",
     "https://inv.tux.pizza",
-    "https://invidious.perennialte.ch",
-    "https://iv.ggtyler.dev",
+    "https://invidious.perennialte.ch", 
+    "https://yewtu.be",
+    "https://invidious.fdn.fr",
+    "https://vid.puffyan.us",
     "https://invidious.privacyredirect.com",
-    "https://invidious.lunar.icu",
-    "https://yt.drgnz.club",
+    "https://iv.datura.network",
+    "https://invidious.io.lol",
+    "https://yt.artemislena.eu",
+    "https://invidious.tiekoetter.com",
+]
+
+# Cookie file path
+COOKIE_FILE_PATHS = [
+    "/workspace/attached_assets/cookies_1781947987715.txt",
+    "./attached_assets/cookies_1781947987715.txt",
+    "/app/attached_assets/cookies_1781947987715.txt",
+    os.path.expanduser("~/.config/youtube-cookies.txt"),
 ]
 
 
@@ -39,7 +51,32 @@ class YouTubeScraper:
     
     def __init__(self):
         self.client = None
+        self.curl_session = None
         self.settings = get_settings()
+        self.cookies = self._load_cookies()
+    
+    def _load_cookies(self) -> Optional[str]:
+        """Load cookies from file for YouTube authentication."""
+        for cookie_path in COOKIE_FILE_PATHS:
+            if os.path.exists(cookie_path):
+                try:
+                    with open(cookie_path, 'r') as f:
+                        content = f.read()
+                        # Filter only YouTube/Google cookies
+                        youtube_cookies = []
+                        for line in content.split('\n'):
+                            if line.startswith('#') or not line.strip():
+                                continue
+                            parts = line.split('\t')
+                            if len(parts) >= 6 and ('youtube.com' in parts[0] or 'google.com' in parts[0]):
+                                youtube_cookies.append(line)
+                        if youtube_cookies:
+                            logger.info(f"Loaded {len(youtube_cookies)} YouTube/Google cookies from {cookie_path}")
+                            return '\n'.join(youtube_cookies)
+                except Exception as e:
+                    logger.warning(f"Failed to load cookies from {cookie_path}: {e}")
+        logger.warning("No YouTube cookies found, will use unauthenticated requests")
+        return None
     
     async def __aenter__(self):
         """Async context manager entry - with proper SSL for free hosting."""
@@ -47,21 +84,34 @@ class YouTubeScraper:
         # Check if we should verify SSL (default: True for free hosting compatibility)
         verify_ssl = os.getenv("YTDL_VERIFY_SSL", "true").lower() == "true"
         
+        # Create httpx client with improved SSL settings
         self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(
                 max(self.settings.youtube_timeout, 30) * 2,
                 connect=15.0
             ),
             follow_redirects=True,
-            verify=verify_ssl,  # ✅ Enable SSL verification for free hosting
+            verify=verify_ssl,
             headers={
                 "User-Agent": random.choice(USER_AGENTS),
                 "Accept-Language": "en-US,en;q=0.9",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
             },
-            http2=True  # ✅ HTTP/2 support
+            http2=True,
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=20)
         )
+        
+        # Create curl-cffi session for fallback (better SSL handling)
+        self.curl_session = curl_requests.Session(
+            impersonate="chrome120",
+            timeout=max(self.settings.youtube_timeout, 30),
+            allow_redirects=True
+        )
+        
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -69,6 +119,9 @@ class YouTubeScraper:
         if self.client:
             await self.client.aclose()
             self.client = None
+        if self.curl_session:
+            self.curl_session.close()
+            self.curl_session = None
     
     async def search(self, keyword: str, limit: int = 20, sort_by: str = "relevance") -> List[Dict[str, Any]]:
         """
@@ -76,8 +129,9 @@ class YouTubeScraper:
         
         Priority untuk FREE HOSTING (HF Spaces, Render, Railway):
         1. Invidious API (MOST reliable - tidak perlu SSL bypass/cookies)
-        2. youtube-search package (fallback library)
-        3. YouTube direct (hanya jika Invidious down)
+        2. curl-cffi direct search (bypass SSL issues dengan browser impersonation)
+        3. youtube-search package (fallback library)
+        4. YouTube direct httpx (last resort)
         
         Args:
             keyword: Search query
@@ -97,7 +151,16 @@ class YouTubeScraper:
         except Exception as e:
             logger.warning(f"Invidious search failed: {e}")
         
-        # Priority 2: youtube-search package (fallback)
+        # Priority 2: curl-cffi with browser impersonation (SSL bypass)
+        try:
+            results = await self._search_curl_cffi(keyword, limit, sort_by)
+            if results:
+                logger.info(f"✅ curl-cffi search success: {len(results)} results")
+                return results
+        except Exception as e:
+            logger.warning(f"curl-cffi search failed: {e}")
+        
+        # Priority 3: youtube-search package (fallback)
         try:
             results = await self._search_fallback_package(keyword, limit)
             if results:
@@ -106,7 +169,7 @@ class YouTubeScraper:
         except Exception as e:
             logger.warning(f"Fallback package search failed: {e}")
         
-        # Priority 3: YouTube direct (last resort - mungkin butuh cookies di masa depan)
+        # Priority 4: YouTube direct (last resort - mungkin butuh cookies di masa depan)
         try:
             results = await self._search_youtube_direct(keyword, limit, sort_by)
             if results:
@@ -115,18 +178,94 @@ class YouTubeScraper:
         except Exception as e:
             logger.error(f"YouTube direct search also failed: {e}")
         
-        logger.error(f"❌ All search methods failed for keyword: {keyword}")
+        # Return empty list instead of error - allows graceful degradation
+        logger.warning(f"⚠️ No results found for keyword: {keyword} (all methods exhausted)")
         return []
     
+    async def _search_curl_cffi(self, keyword: str, limit: int, sort_by: str) -> List[Dict[str, Any]]:
+        """Search YouTube using curl-cffi with browser impersonation for SSL bypass."""
+        
+        search_url = f"{self.settings.youtube_base_url}?search_query={keyword}"
+        if sort_by == "date":
+            search_url += "&sp=CAI%253D"  # Sort by upload date
+        
+        try:
+            # Use curl-cffi with Chrome impersonation - bypasses most SSL issues
+            response = await asyncio.to_thread(
+                lambda: self.curl_session.get(
+                    search_url,
+                    headers={
+                        "User-Agent": random.choice(USER_AGENTS),
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Accept-Language": "en-US,en;q=0.9",
+                        "Sec-Fetch-Mode": "navigate",
+                        "Sec-Fetch-Site": "none",
+                    },
+                    timeout=max(self.settings.youtube_timeout, 30)
+                )
+            )
+            
+            html = response.text
+            
+            # Extract video data from ytInitialData
+            videos = []
+            pattern = r'"videoId":"([^"]+)".*?"title":\{"runs":\[\{"text":"([^"]+)"'
+            matches = re.findall(pattern, html)
+            
+            for video_id, title in matches[:limit]:
+                try:
+                    import json as _json
+                    decoded_title = _json.loads(f'"{title}"')
+                except Exception:
+                    decoded_title = title
+                videos.append({
+                    "video_id": video_id,
+                    "title": decoded_title,
+                    "url": f"https://www.youtube.com/watch?v={video_id}",
+                    "channel": None,
+                    "channel_url": None,
+                    "publish_date": None,
+                    "view_count": 0,
+                    "description": "",
+                    "duration": None,
+                })
+            
+            return videos
+            
+        except Exception as e:
+            logger.error(f"curl-cffi search error: {e}")
+            raise
+    
     async def _search_youtube_direct(self, keyword: str, limit: int, sort_by: str) -> List[Dict[str, Any]]:
-        """Search langsung ke YouTube (sering diblok di cloud)."""
+        """Search langsung ke YouTube dengan cookies (sering diblok di cloud)."""
         search_url = f"{self.settings.youtube_base_url}?search_query={keyword}"
         
         if sort_by == "date":
             search_url += "&sp=CAI%253D"  # Sort by upload date
         
         try:
-            response = await self.client.get(search_url)
+            # Build headers with cookies if available
+            headers = {
+                "User-Agent": random.choice(USER_AGENTS),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "none",
+            }
+            
+            # Add cookies to request if available
+            cookies_dict = None
+            if self.cookies:
+                cookies_dict = {}
+                for line in self.cookies.split('\n'):
+                    if line.startswith('#') or not line.strip():
+                        continue
+                    parts = line.split('\t')
+                    if len(parts) >= 7:
+                        domain, path, secure, expiry, name, value = parts[0], parts[2], parts[3], parts[4], parts[5], parts[6]
+                        cookies_dict[name] = value
+            
+            response = await self.client.get(search_url, headers=headers, cookies=cookies_dict)
             response.raise_for_status()
             
             # Parse HTML YouTube (simplified - implementasi lengkap di file asli)
