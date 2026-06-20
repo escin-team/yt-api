@@ -67,9 +67,9 @@ async def download_audio(
                 video_id=video_id,
                 title=cached_audio.title,
                 duration=cached_audio.duration,
-                download_url=cached_audio.download_url,
-                storage_source="cloudinary",
-                storage_account="cached",
+                download_url=cached_audio.file_path,
+                storage_source=cached_audio.storage_source,
+                storage_account=cached_audio.storage_account,
                 cached=True,
                 file_size=cached_audio.file_size
             )
@@ -91,8 +91,8 @@ async def download_audio(
             video_id=video_id,
             title=result.title,
             duration=result.duration,
-            download_url=result.download_url,
-            storage_source="cloudinary",
+            download_url=result.file_path,
+            storage_source=result.storage_source,
             storage_account=result.storage_account,
             cached=False,
             file_size=result.file_size

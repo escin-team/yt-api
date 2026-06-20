@@ -65,19 +65,18 @@ class AudioDownloader:
             }],
         }
         
-        # Cookies — prefer YOUTUBE_COOKIES_FILE path, fall back to YOUTUBE_COOKIES content
-        cookies_file = os.getenv('YOUTUBE_COOKIES_FILE')
+        # Cookies — check multiple sources in priority order
+        _WORKSPACE_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../'))
+        _BUNDLED_COOKIE_FILE = os.path.join(_WORKSPACE_ROOT, 'attached_assets', 'cookies_1781947987715.txt')
+        cookies_file = (
+            os.getenv('YOUTUBE_COOKIES_FILE')
+            or (_BUNDLED_COOKIE_FILE if os.path.exists(_BUNDLED_COOKIE_FILE) else None)
+        )
         if cookies_file and os.path.exists(cookies_file):
             opts['cookiefile'] = cookies_file
             logger.info(f"Using cookies from file: {cookies_file}")
         else:
-            cookies_content = os.getenv('YOUTUBE_COOKIES', '').strip()
-            if cookies_content:
-                cookie_path = '/tmp/youtube_cookies.txt'
-                with open(cookie_path, 'w') as f:
-                    f.write(cookies_content)
-                opts['cookiefile'] = cookie_path
-                logger.info("Using cookies from YOUTUBE_COOKIES env var")
+            logger.warning("No valid cookie file found — downloads may hit bot detection")
 
         return opts
     
@@ -178,10 +177,11 @@ class AudioDownloader:
                 audio_file = AudioFile(
                     video_id=video_id,
                     title=info.get('title', 'Unknown'),
-                    download_url=cloudinary_url,
+                    file_name=f"{video_id}.mp3",
+                    file_path=cloudinary_url,
                     file_size=os.path.getsize(downloaded_file),
                     duration=info.get('duration', 0) or 0,
-                    bitrate=bitrate,
+                    storage_source="cloudinary",
                     storage_account=account_name
                 )
                 
