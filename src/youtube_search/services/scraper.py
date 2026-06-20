@@ -41,21 +41,25 @@ class YouTubeScraper:
         self.settings = get_settings()
     
     async def __aenter__(self):
-        """Async context manager entry."""
+        """Async context manager entry - with proper SSL for free hosting."""
+        
+        # Check if we should verify SSL (default: True for free hosting compatibility)
+        verify_ssl = os.getenv("YTDL_VERIFY_SSL", "true").lower() == "true"
+        
         self.client = httpx.AsyncClient(
             timeout=httpx.Timeout(
                 max(self.settings.youtube_timeout, 30) * 2,
                 connect=15.0
             ),
             follow_redirects=True,
-            verify=False,  # ⭐ Disable SSL verification untuk cloud environments
+            verify=verify_ssl,  # ✅ Enable SSL verification for free hosting
             headers={
                 "User-Agent": random.choice(USER_AGENTS),
                 "Accept-Language": "en-US,en;q=0.9",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Sec-Fetch-Mode": "navigate",
             },
-            http2=True  # ⭐ Force HTTP/2
+            http2=True  # ✅ HTTP/2 support
         )
         return self
     
@@ -67,12 +71,12 @@ class YouTubeScraper:
     
     async def search(self, keyword: str, limit: int = 20, sort_by: str = "relevance") -> List[Dict[str, Any]]:
         """
-        Search YouTube videos dengan fallback multi-layer.
+        Search YouTube videos dengan fallback multi-layer untuk free hosting.
         
-        Priority:
-        1. Invidious API (paling reliable di cloud)
+        Priority untuk FREE HOSTING (HF Spaces, Render, Railway):
+        1. Invidious API (MOST reliable - tidak perlu SSL bypass/cookies)
         2. youtube-search package (fallback library)
-        3. YouTube direct (paling sering diblok di cloud)
+        3. YouTube direct (hanya jika Invidious down)
         
         Args:
             keyword: Search query
@@ -82,7 +86,8 @@ class YouTubeScraper:
         Returns:
             List of video dicts
         """
-        # Priority 1: Invidious (paling reliable di cloud)
+        # Priority 1: Invidious API - BEST untuk free hosting
+        # Tidak butuh cookies, tidak butuh SSL bypass, fully public API
         try:
             results = await self._search_invidious(keyword, limit, sort_by)
             if results:
@@ -91,7 +96,7 @@ class YouTubeScraper:
         except Exception as e:
             logger.warning(f"Invidious search failed: {e}")
         
-        # Priority 2: youtube-search package
+        # Priority 2: youtube-search package (fallback)
         try:
             results = await self._search_fallback_package(keyword, limit)
             if results:
@@ -100,7 +105,7 @@ class YouTubeScraper:
         except Exception as e:
             logger.warning(f"Fallback package search failed: {e}")
         
-        # Priority 3: YouTube direct (last resort)
+        # Priority 3: YouTube direct (last resort - mungkin butuh cookies di masa depan)
         try:
             results = await self._search_youtube_direct(keyword, limit, sort_by)
             if results:
