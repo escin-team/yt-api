@@ -19,8 +19,8 @@ class AudioDownloader:
     def __init__(self):
         self.cloudinary = CloudinaryService()
     
-    def _get_ydl_opts(self, output_file: str, timeout: int, bitrate: int, client: str = "web_creator") -> dict:
-        """Get yt-dlp options dengan SSL workaround + impersonate."""
+    def _get_ydl_opts(self, output_file: str, timeout: int, bitrate: int, client: str = "tv") -> dict:
+        """Get yt-dlp options with Bun JS runtime for EJS challenge solving."""
         opts = {
             'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
             'outtmpl': output_file,
@@ -38,12 +38,13 @@ class AudioDownloader:
             'skip_unavailable_fragments': True,
             'keepvideo': False,
             'nocheckcertificate': True,
-            'legacy-server-connect': True,
             'geo_bypass': True,
             'geo_bypass_country': 'US',
-            'force-ipv4': True,
             'no_color': True,
-            
+
+            # Use bun as the JS runtime for EJS challenge solving (yt-dlp requires Node ≥22 but bun ≥1.2.11)
+            'js_runtimes': {'bun': {}},
+
             'extractor_args': {
                 'youtube': {
                     'player_client': [client],
@@ -97,8 +98,8 @@ class AudioDownloader:
                 
                 import yt_dlp
                 
-                # Daftar client untuk fallback (tv_embedded & android bypass bot detection best)
-                clients = ['tv_embedded', 'android', 'ios', 'web_creator', 'web']
+                # tv client works with Bun EJS challenge solver; fallback to web variants
+                clients = ['tv', 'tv_embedded', 'web_creator', 'web']
                 max_attempts = len(clients)
                 last_error = None
                 info = None

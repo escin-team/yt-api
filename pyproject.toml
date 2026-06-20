@@ -31,6 +31,7 @@ dependencies = [
     "uvicorn>=0.31.1",
     # ⭐ Audio Download - UPDATE ke versi terbaru untuk SSL fix
     "yt-dlp>=2024.12.13",
+    "yt-dlp-ejs>=0.8.0",
     "cloudinary>=1.38.0",
     "slowapi>=0.1.9",
     # MCP-related dependencies

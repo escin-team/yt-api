@@ -1,0 +1,1 @@
+- [yt-dlp EJS Bun fix](yt-dlp-ejs-bun.md) — yt-dlp needs yt-dlp-ejs pip pkg + bun runtime; node v20 too old (needs ≥22), bun ≥1.2.11 works.
